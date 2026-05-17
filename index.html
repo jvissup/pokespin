@@ -70,6 +70,7 @@
   }
   .spin-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 0 40px rgba(232,200,106,0.5); }
   .spin-btn:disabled { background: var(--bg3); color: var(--muted); cursor: not-allowed; box-shadow: none; }
+  .wheel-actions { width: 100%; display: flex; flex-direction: column; gap: 10px; }
 
   /* ── Right panel ── */
   .right-col { display: flex; flex-direction: column; gap: 18px; }
@@ -254,7 +255,10 @@
     <div class="wheel-col">
       <canvas id="wheel" width="360" height="360"></canvas>
       <div class="wheel-result" id="wheel-result">&nbsp;</div>
-      <button class="spin-btn" id="spin-btn" disabled>SPIN</button>
+      <div class="wheel-actions">
+        <button class="spin-btn" id="spin-btn" disabled>SPIN</button>
+        <button class="btn-newgame" id="reset-btn">↩ RESET</button>
+      </div>
     </div>
 
     <!-- RIGHT: Game panel -->
@@ -395,6 +399,7 @@ let spinFrom   = 0;
 let spinTo     = 0;
 let spinDur    = 0;
 let winSlotIdx = -1;
+let resultTimeout = null;
 
 function groupColor(slot) {
   return slot.color || "#888";
@@ -712,87 +717,39 @@ function showResult(win, slot) {
   const actions = document.getElementById("res-actions");
   actions.innerHTML = "";
 
-  if (win) {
-    document.getElementById("res-desc").textContent = `The wheel landed on ${slot.emoji} ${slot.name}! You're on ${state.wins} consecutive win${state.wins !== 1 ? "s" : ""}.`;
+  if (win && state.wins >= 6) {
+    document.getElementById("res-emoji").textContent = "🏆";
+    document.getElementById("res-title").textContent = "MAX WINS!";
+    document.getElementById("res-title").className   = "result-title win";
+    document.getElementById("res-desc").textContent = `You landed on ${slot.emoji} ${slot.name} and reached 6 consecutive wins. Incredible run!`;
     document.getElementById("res-cashout-box").style.display = "";
     document.getElementById("res-prize-name").textContent = rung.emoji + " " + rung.prize;
     document.getElementById("res-prize-val").textContent  = `Value $${rung.value} · Cost $${rung.cost}`;
-
-    // Cashout button
-    const btnC = document.createElement("button");
-    btnC.className = "btn-cashout";
-    btnC.textContent = "💰 CASHOUT";
-    btnC.addEventListener("click", doCashout);
-    actions.appendChild(btnC);
-
-    // Continue button (only if there's a higher rung)
-    const nextRung = LADDER.find(r => r.wins > state.wins);
-    if (nextRung) {
-      const btnK = document.createElement("button");
-      btnK.className = "btn-continue";
-      btnK.textContent = "▲ KEEP SPINNING";
-      btnK.addEventListener("click", doKeepSpinning);
-      actions.appendChild(btnK);
-    } else {
-      // At max — must cashout
-      const btnC2 = document.createElement("button");
-      btnC2.className = "btn-continue";
-      btnC2.textContent = "🏆 MAX PRIZE!";
-      btnC2.addEventListener("click", doCashout);
-      actions.appendChild(btnC2);
-    }
   } else {
-    document.getElementById("res-desc").innerHTML = `The wheel landed on ${slot.emoji} <strong>${slot.name}</strong> — not in your picks.<br>Your run resets to 0 wins.`;
+    document.getElementById("res-desc").innerHTML = `The wheel landed on ${slot.emoji} <strong>${slot.name}</strong> — not in your picks.<br>Your run is over.`;
     document.getElementById("res-cashout-box").style.display = "";
     document.getElementById("res-prize-name").textContent = LADDER[0].emoji + " " + LADDER[0].prize;
     document.getElementById("res-prize-val").textContent  = "Consolation prize · Value $" + LADDER[0].value;
-
-    const btnN = document.createElement("button");
-    btnN.className = "btn-newgame";
-    btnN.textContent = "↩ NEW ROUND";
-    btnN.addEventListener("click", resetRound);
-    actions.appendChild(btnN);
   }
-}
 
-function doCashout() {
-  const rung = currentLadderEntry();
-  document.getElementById("phase-result").style.display = "none";
-
-  // Full cashout summary screen inside result panel
-  document.getElementById("phase-result").style.display = "";
-  document.getElementById("res-emoji").textContent = "🎉";
-  document.getElementById("res-title").textContent = "CASHED OUT";
-  document.getElementById("res-title").className   = "result-title win";
-  document.getElementById("res-desc").textContent  = `You walked away with ${state.wins} consecutive win${state.wins !== 1 ? "s" : ""}. Nice run!`;
-  document.getElementById("res-cashout-box").style.display = "";
-  document.getElementById("res-prize-name").textContent = rung.emoji + " " + rung.prize;
-  document.getElementById("res-prize-val").textContent  = `Value $${rung.value} · Cost $${rung.cost}`;
-
-  const actions = document.getElementById("res-actions");
-  actions.innerHTML = "";
   const btn = document.createElement("button");
   btn.className = "btn-newgame";
-  btn.textContent = "↩ NEW GAME";
+  btn.textContent = "↩ RESET";
   btn.addEventListener("click", resetRound);
   actions.appendChild(btn);
-
-  state.phase = "cashout";
-}
-
-function doKeepSpinning() {
-  document.getElementById("phase-result").style.display = "none";
-  document.getElementById("phase-result").classList.remove("show");
-  document.getElementById("phase-pick").style.display = "";
-  document.getElementById("wheel-result").className = "wheel-result";
-  document.getElementById("wheel-result").textContent = "\u00a0";
-  state.selected = [];
-  state.phase = "pick";
-  updatePickUI();
-  renderLadder();
 }
 
 function resetRound() {
+  if (spinRAF) cancelAnimationFrame(spinRAF);
+  spinRAF = null;
+  spinCB = null;
+  spinStart = null;
+  spinning = false;
+  if (resultTimeout) {
+    clearTimeout(resultTimeout);
+    resultTimeout = null;
+  }
+
   state.wins     = 0;
   state.history  = [];
   state.selected = [];
@@ -879,13 +836,23 @@ document.getElementById("spin-btn").addEventListener("click", () => {
     renderHistory();
     renderLadder();
 
-    // Short pause then show result modal
-    setTimeout(() => {
+    if (win && state.wins < 6) {
+      state.phase = "pick";
+      updatePickUI();
+      return;
+    }
+
+    // Stop only on loss or when reaching 6 wins
+    if (resultTimeout) clearTimeout(resultTimeout);
+    resultTimeout = setTimeout(() => {
       state.phase = "result";
       showResult(win, landedSlot);
+      resultTimeout = null;
     }, 900);
   });
 });
+
+document.getElementById("reset-btn").addEventListener("click", resetRound);
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 renderLadder();
