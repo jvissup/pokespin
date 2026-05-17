@@ -726,7 +726,7 @@ function showResult(win, slot) {
   const actions = document.getElementById("res-actions");
   actions.innerHTML = "";
 
-  if (win && state.wins >= MAX_CONSECUTIVE_WINS) {
+  if (win && state.wins === MAX_CONSECUTIVE_WINS) {
     document.getElementById("res-emoji").textContent = "🏆";
     document.getElementById("res-title").textContent = "MAX WINS!";
     document.getElementById("res-title").className   = "result-title win";
@@ -735,7 +735,7 @@ function showResult(win, slot) {
     document.getElementById("res-prize-name").textContent = rung.emoji + " " + rung.prize;
     document.getElementById("res-prize-val").textContent  = `Value $${rung.value} · Cost $${rung.cost}`;
   } else {
-    document.getElementById("res-desc").innerHTML = `The wheel landed on ${slot.emoji} <strong>${slot.name}</strong> — not in your picks.<br>Your run is over.`;
+    document.getElementById("res-desc").textContent = `The wheel landed on ${slot.emoji} ${slot.name} — not in your picks. Your run is over.`;
     document.getElementById("res-cashout-box").style.display = "";
     document.getElementById("res-prize-name").textContent = LADDER[0].emoji + " " + LADDER[0].prize;
     document.getElementById("res-prize-val").textContent  = "Consolation prize · Value $" + LADDER[0].value;
