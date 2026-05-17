@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>PokeRoulette</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --gold:    #e8c86a;
+    --gold2:   #f5e199;
+    --red:     #e05252;
+    --green:   #52c98a;
+    --purple:  #b07ef5;
+    --orange:  #f09a50;
+    --bg:      #0c0b10;
+    --bg2:     #13121a;
+    --bg3:     #1c1b26;
+    --border:  rgba(232,200,106,0.18);
+    --text:    #e8e4d8;
+    --muted:   #5a5870;
+    --font-display: 'Bebas Neue', sans-serif;
+    --font-mono:    'DM Mono', monospace;
+    --font-body:    'DM Sans', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Subtle noise overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0; opacity: 0.35;
+  }
+
+  /* ── Layout ── */
+  .wrap { position: relative; z-index: 1; max-width: 1080px; margin: 0 auto; padding: 28px 20px 60px; }
+
+  .header { text-align: center; margin-bottom: 32px; }
+  .header-eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 4px; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
+  .header-title { font-family: var(--font-display); font-size: clamp(52px, 8vw, 88px); letter-spacing: 3px; line-height: 1; background: linear-gradient(135deg, var(--gold) 0%, var(--gold2) 60%, #fff8d0 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .header-sub { font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin-top: 8px; letter-spacing: 1px; }
+
+  /* ── Main grid ── */
+  .main-grid { display: grid; grid-template-columns: 380px 1fr; gap: 28px; align-items: start; }
+  @media (max-width: 800px) { .main-grid { grid-template-columns: 1fr; } }
+
+  /* ── Wheel container ── */
+  .wheel-col { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+  canvas#wheel { display: block; filter: drop-shadow(0 0 40px rgba(232,200,106,0.18)); }
+
+  .spin-btn {
+    font-family: var(--font-display);
+    font-size: 24px; letter-spacing: 3px;
+    background: linear-gradient(135deg, var(--gold), #c9a84c);
+    color: #0c0b10; border: none; border-radius: 6px;
+    padding: 12px 44px; cursor: pointer;
+    box-shadow: 0 0 28px rgba(232,200,106,0.35);
+    transition: all 0.2s; width: 100%;
+  }
+  .spin-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 0 40px rgba(232,200,106,0.5); }
+  .spin-btn:disabled { background: var(--bg3); color: var(--muted); cursor: not-allowed; box-shadow: none; }
+
+  /* ── Right panel ── */
+  .right-col { display: flex; flex-direction: column; gap: 18px; }
+
+  .panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 22px;
+  }
+  .panel-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; margin-bottom: 14px; }
+
+  /* ── Win Ladder ── */
+  .ladder { display: flex; flex-direction: column; gap: 5px; }
+  .rung {
+    display: flex; align-items: center; gap: 12px;
+    padding: 9px 14px; border-radius: 8px;
+    border: 1px solid transparent;
+    transition: all 0.3s;
+    position: relative; overflow: hidden;
+  }
+  .rung.achieved { border-color: var(--gold); background: rgba(232,200,106,0.08); }
+  .rung.current  { border-color: var(--green); background: rgba(82,201,138,0.12); box-shadow: 0 0 16px rgba(82,201,138,0.2); }
+  .rung.locked   { opacity: 0.4; }
+  .rung-wins { font-family: var(--font-display); font-size: 22px; color: var(--muted); min-width: 30px; }
+  .rung.current .rung-wins { color: var(--green); }
+  .rung.achieved .rung-wins { color: var(--gold); }
+  .rung-prize { flex: 1; }
+  .rung-prize-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .rung-prize-val { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+  .rung-badge {
+    font-family: var(--font-mono); font-size: 10px;
+    padding: 2px 8px; border-radius: 20px; letter-spacing: 1px;
+  }
+  .rung.current .rung-badge { background: rgba(82,201,138,0.2); color: var(--green); }
+  .rung.achieved .rung-badge { background: rgba(232,200,106,0.15); color: var(--gold); }
+
+  /* ── Type picker ── */
+  .type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-bottom: 12px; }
+  .type-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 8px 4px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);
+    background: var(--bg3); cursor: pointer; transition: all 0.15s;
+    font-size: 11px; color: var(--muted); font-family: var(--font-body);
+  }
+  .type-btn .emoji { font-size: 18px; }
+  .type-btn:hover { border-color: rgba(255,255,255,0.2); color: var(--text); }
+  .type-btn.selected { border-color: var(--gold); background: rgba(232,200,106,0.1); color: var(--gold); }
+  .type-btn.selected-house { border-color: var(--purple); background: rgba(176,126,245,0.1); color: var(--purple); }
+  .type-btn.win-flash { animation: winFlash 0.5s ease; }
+  .type-btn.lose-flash { animation: loseFlash 0.5s ease; }
+  @keyframes winFlash { 0%,100%{} 50%{ background:rgba(82,201,138,0.3); border-color:var(--green); } }
+  @keyframes loseFlash { 0%,100%{} 50%{ background:rgba(224,82,82,0.3); border-color:var(--red); } }
+
+  .pick-hint { font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+  .pick-counter { font-family: var(--font-mono); font-size: 12px; }
+  .pick-counter.valid { color: var(--green); }
+  .pick-counter.invalid { color: var(--gold); }
+
+  /* Divider between types and house */
+  .type-section-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; margin: 10px 0 7px; }
+  .house-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+
+  /* ── Result overlay ── */
+  .result-panel {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+    padding: 22px; text-align: center; display: none;
+  }
+  .result-panel.show { display: block; animation: fadeUp 0.4s ease; }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+
+  .result-emoji { font-size: 44px; margin-bottom: 8px; }
+  .result-title { font-family: var(--font-display); font-size: 32px; letter-spacing: 2px; margin-bottom: 6px; }
+  .result-title.win { color: var(--green); }
+  .result-title.loss { color: var(--red); }
+  .result-desc { font-size: 13px; color: var(--muted); margin-bottom: 18px; line-height: 1.5; }
+
+  .result-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .btn-cashout {
+    font-family: var(--font-display); font-size: 18px; letter-spacing: 2px;
+    background: linear-gradient(135deg, var(--gold), #c9a84c);
+    color: #0c0b10; border: none; border-radius: 6px;
+    padding: 10px 28px; cursor: pointer;
+    box-shadow: 0 0 20px rgba(232,200,106,0.3);
+    transition: all 0.2s;
+  }
+  .btn-cashout:hover { transform: translateY(-1px); }
+  .btn-continue {
+    font-family: var(--font-display); font-size: 18px; letter-spacing: 2px;
+    background: transparent; color: var(--green);
+    border: 1px solid var(--green); border-radius: 6px;
+    padding: 10px 28px; cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-continue:hover { background: rgba(82,201,138,0.1); }
+  .btn-newgame {
+    font-family: var(--font-display); font-size: 18px; letter-spacing: 2px;
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--muted); border-radius: 6px;
+    padding: 10px 28px; cursor: pointer;
+    transition: all 0.2s; width: 100%;
+  }
+  .btn-newgame:hover { border-color: var(--text); color: var(--text); }
+
+  /* ── Cashout summary ── */
+  .cashout-box {
+    background: linear-gradient(135deg, rgba(232,200,106,0.12), rgba(232,200,106,0.04));
+    border: 1px solid var(--gold); border-radius: 10px;
+    padding: 14px 18px; margin-bottom: 16px;
+    font-family: var(--font-mono); font-size: 13px;
+  }
+  .cashout-box .prize-name { font-size: 18px; color: var(--gold); font-weight: 600; font-family: var(--font-body); }
+  .cashout-box .prize-val  { font-size: 12px; color: var(--muted); }
+
+  /* ── Current picks display ── */
+  .picks-display {
+    display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px;
+    min-height: 34px; align-items: center;
+  }
+  .pick-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: rgba(232,200,106,0.1); border: 1px solid rgba(232,200,106,0.3);
+    border-radius: 20px; padding: 3px 10px;
+    font-size: 12px; color: var(--gold);
+  }
+  .pick-tag.house-tag { background: rgba(176,126,245,0.1); border-color: rgba(176,126,245,0.3); color: var(--purple); }
+
+  /* ── History strip ── */
+  .history-strip { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .hist-dot {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; border: 1px solid transparent;
+  }
+  .hist-dot.w { background: rgba(82,201,138,0.2); border-color: var(--green); }
+  .hist-dot.l { background: rgba(224,82,82,0.2); border-color: var(--red); }
+
+  /* ── Streak counter ── */
+  .streak { font-family: var(--font-display); font-size: 52px; line-height: 1; color: var(--gold); text-align: center; }
+  .streak-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: 3px; color: var(--muted); text-align: center; }
+
+  /* ── Decorative corner lines ── */
+  .corner-deco {
+    position: fixed; width: 120px; height: 120px; pointer-events: none; z-index: 0;
+    border-color: rgba(232,200,106,0.12); border-style: solid;
+  }
+  .corner-deco.tl { top:16px; left:16px; border-width:1px 0 0 1px; }
+  .corner-deco.br { bottom:16px; right:16px; border-width:0 1px 1px 0; }
+
+  /* Pulse animation for current rung */
+  @keyframes pulse { 0%,100%{ box-shadow:0 0 16px rgba(82,201,138,0.2); } 50%{ box-shadow:0 0 28px rgba(82,201,138,0.4); } }
+  .rung.current { animation: pulse 2s infinite; }
+
+  /* ── Wheel result banner ── */
+  .wheel-result { font-family: var(--font-mono); font-size: 13px; text-align: center; min-height: 22px; letter-spacing: 1px; }
+  .wheel-result.win  { color: var(--green); }
+  .wheel-result.loss { color: var(--red); }
+  .wheel-result.spin { color: var(--muted); }
+
+  /* Phase: pick */
+  #phase-pick { display: block; }
+  #phase-result { display: none; }
+  #phase-cashout { display: none; }
+</style>
+</head>
+<body>
+
+<div class="corner-deco tl"></div>
+<div class="corner-deco br"></div>
+
+<div class="wrap">
+
+  <header class="header">
+    <div class="header-eyebrow">Pokemon Show Casino</div>
+    <div class="header-title">PokeRoulette</div>
+    <div class="header-sub">38 slots · pick 9 types · climb the ladder</div>
+  </header>
+
+  <div class="main-grid">
+
+    <!-- LEFT: Wheel -->
+    <div class="wheel-col">
+      <canvas id="wheel" width="360" height="360"></canvas>
+      <div class="wheel-result" id="wheel-result">&nbsp;</div>
+      <button class="spin-btn" id="spin-btn" disabled>SPIN</button>
+    </div>
+
+    <!-- RIGHT: Game panel -->
+    <div class="right-col">
+
+      <!-- Win Ladder -->
+      <div class="panel">
+        <div class="panel-label">Win Ladder</div>
+        <div class="ladder" id="ladder"></div>
+      </div>
+
+      <!-- Type Picker (shown during pick phase) -->
+      <div class="panel" id="phase-pick">
+        <div class="panel-label">Pick Your Types</div>
+        <div class="pick-hint">Choose 9 types — or swap 1 type for Legendary, 2 types for both house slots</div>
+
+        <div class="type-section-label">Types</div>
+        <div class="type-grid" id="type-grid"></div>
+
+        <div class="type-section-label">House Slots</div>
+        <div class="house-grid" id="house-grid"></div>
+
+        <div style="margin-top:14px; display:flex; justify-content:space-between; align-items:center;">
+          <div class="pick-counter invalid" id="pick-counter">0 / 9 selected</div>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);">Covers <span id="coverage-pct">0</span>% of wheel</div>
+        </div>
+
+        <div class="picks-display" id="picks-display"></div>
+      </div>
+
+      <!-- Result panel (shown after spin) -->
+      <div class="result-panel" id="phase-result">
+        <div class="result-emoji" id="res-emoji"></div>
+        <div class="result-title" id="res-title"></div>
+        <div class="result-desc"  id="res-desc"></div>
+
+        <div class="cashout-box" id="res-cashout-box" style="display:none;">
+          <div class="prize-name" id="res-prize-name"></div>
+          <div class="prize-val"  id="res-prize-val"></div>
+        </div>
+
+        <div class="result-actions" id="res-actions"></div>
+      </div>
+
+      <!-- History -->
+      <div class="panel" id="history-panel" style="display:none;">
+        <div class="panel-label">This Run</div>
+        <div style="display:flex;gap:24px;align-items:center;">
+          <div>
+            <div class="streak" id="streak-num">0</div>
+            <div class="streak-label">Consecutive Wins</div>
+          </div>
+          <div class="history-strip" id="history-strip"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Data ─────────────────────────────────────────────────────────────────────
+const TYPES = [
+  { name:"Fire",     emoji:"🔥", group:"attack",  color:"#e05252" },
+  { name:"Fighting", emoji:"🥊", group:"attack",  color:"#e05252" },
+  { name:"Dragon",   emoji:"🐉", group:"attack",  color:"#e05252" },
+  { name:"Dark",     emoji:"🌑", group:"attack",  color:"#e05252" },
+  { name:"Water",    emoji:"💧", group:"support", color:"#52c98a" },
+  { name:"Grass",    emoji:"🌿", group:"support", color:"#52c98a" },
+  { name:"Ice",      emoji:"❄️", group:"support", color:"#52c98a" },
+  { name:"Fairy",    emoji:"✨", group:"support", color:"#52c98a" },
+  { name:"Psychic",  emoji:"🔮", group:"special", color:"#b07ef5" },
+  { name:"Ghost",    emoji:"👻", group:"special", color:"#b07ef5" },
+  { name:"Electric", emoji:"⚡", group:"special", color:"#b07ef5" },
+  { name:"Poison",   emoji:"☠️", group:"special", color:"#b07ef5" },
+  { name:"Ground",   emoji:"🌍", group:"earth",   color:"#f09a50" },
+  { name:"Rock",     emoji:"🪨", group:"earth",   color:"#f09a50" },
+  { name:"Steel",    emoji:"⚙️", group:"earth",   color:"#f09a50" },
+  { name:"Normal",   emoji:"⭐", group:"earth",   color:"#f09a50" },
+  { name:"Flying",   emoji:"🦅", group:"earth",   color:"#f09a50" },
+  { name:"Bug",      emoji:"🐛", group:"earth",   color:"#f09a50" },
+];
+
+const HOUSE = [
+  { name:"Legendary", emoji:"🏆", group:"house", color:"#e8c86a", isHouse:true },
+  { name:"Mythical",  emoji:"💫", group:"house", color:"#e8c86a", isHouse:true },
+];
+
+// 38-slot wheel: 18 types × 2 + Legendary(0) + Mythical(19)
+// Interleaved for colour variety
+const ORDER = [0,4,8,12,1,5,9,13,2,6,10,14,3,7,11,15,16,17];
+function buildWheelSlots() {
+  const ring = ORDER.map(i => TYPES[i]);
+  const slots = [];
+  for (let i = 0; i < 18; i++) {
+    slots.push(ring[i]);
+    slots.push(ring[(i + 9) % 18]);
+  }
+  slots[0]  = HOUSE[0]; // Legendary at 0
+  slots[19] = HOUSE[1]; // Mythical  at 19
+  return slots;
+}
+const WHEEL_SLOTS = buildWheelSlots();
+const TOTAL = WHEEL_SLOTS.length; // 38
+
+const LADDER = [
+  { wins:0, prize:"3× Japanese Pack 1",  cost:12, value:24, emoji:"📦" },
+  { wins:1, prize:"EN Pack 2 + Chinese Pack", cost:10, value:18, emoji:"🎁" },
+  { wins:2, prize:"1× English Pack 3",   cost:10, value:18, emoji:"🃏" },
+  { wins:3, prize:"1× Japanese Pack 2",  cost:17, value:25, emoji:"🎴" },
+  { wins:4, prize:"1× English Pack 1",   cost:17, value:23, emoji:"💎" },
+  { wins:6, prize:"1× English Tin",      cost:23, value:45, emoji:"🏆" },
+];
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let state = {
+  phase:    "pick",   // "pick" | "spinning" | "result" | "cashout"
+  wins:     0,
+  history:  [],
+  selected: [],       // array of slot names the player picked
+  lastSlot: null,
+  lastWin:  false,
+};
+
+// ─── Wheel Canvas ─────────────────────────────────────────────────────────────
+const canvas   = document.getElementById("wheel");
+const ctx      = canvas.getContext("2d");
+const CX = 180, CY = 180, R = 166, IR = 58, BALL_R = 148;
+const SEG = (2 * Math.PI) / TOTAL;
+
+let wheelAngle = 0;
+let ballAngle  = -Math.PI / 2;
+let spinning   = false;
+let spinRAF    = null;
+let spinCB     = null;
+let spinStart  = null;
+let spinFrom   = 0;
+let spinTo     = 0;
+let spinDur    = 0;
+let winSlotIdx = -1;
+
+function groupColor(slot) {
+  return slot.color || "#888";
+}
+
+function drawWheel() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Outer glow ring
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(CX, CY, R + 8, 0, 2 * Math.PI);
+  ctx.strokeStyle = "rgba(232,200,106,0.15)";
+  ctx.lineWidth = 6;
+  ctx.stroke();
+  ctx.restore();
+
+  // Segments
+  WHEEL_SLOTS.forEach((slot, i) => {
+    const a1 = wheelAngle + i * SEG - Math.PI / 2;
+    const a2 = a1 + SEG;
+    const isWinner = !spinning && winSlotIdx === i;
+
+    ctx.beginPath();
+    ctx.moveTo(CX + IR * Math.cos(a1), CY + IR * Math.sin(a1));
+    ctx.arc(CX, CY, R, a1, a2);
+    ctx.arc(CX, CY, IR, a2, a1, true);
+    ctx.closePath();
+
+    const c = groupColor(slot);
+    ctx.fillStyle = isWinner ? "#fff" : (i % 2 === 0 ? c + "cc" : c + "77");
+    ctx.fill();
+    ctx.strokeStyle = "#0c0b10";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Emoji
+    const mid = a1 + SEG / 2;
+    const lr  = (R + IR) / 2;
+    const lx  = CX + lr * Math.cos(mid);
+    const ly  = CY + lr * Math.sin(mid);
+    ctx.save();
+    ctx.translate(lx, ly);
+    ctx.rotate(mid + Math.PI / 2);
+    ctx.font = "12px serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = isWinner ? "#000" : "rgba(255,255,255,0.85)";
+    ctx.fillText(slot.emoji, 0, 0);
+    ctx.restore();
+  });
+
+  // Gold border
+  ctx.beginPath();
+  ctx.arc(CX, CY, R, 0, 2 * Math.PI);
+  ctx.strokeStyle = "#e8c86a";
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // Hub
+  const hub = ctx.createRadialGradient(CX, CY, 0, CX, CY, IR);
+  hub.addColorStop(0, "#1c1b26");
+  hub.addColorStop(1, "#0c0b10");
+  ctx.beginPath();
+  ctx.arc(CX, CY, IR, 0, 2 * Math.PI);
+  ctx.fillStyle = hub;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(232,200,106,0.35)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.font = "bold 14px 'Bebas Neue', sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#e8c86a";
+  ctx.fillText("POKE", CX, CY - 9);
+  ctx.fillText("WHEEL", CX, CY + 11);
+
+  // Ball (during or after spin)
+  if (spinning || state.phase === "result") {
+    const bx = CX + BALL_R * Math.cos(ballAngle);
+    const by = CY + BALL_R * Math.sin(ballAngle);
+    ctx.beginPath();
+    ctx.arc(bx, by, 8, 0, 2 * Math.PI);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+    ctx.strokeStyle = "#aaa";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(bx - 2.5, by - 2.5, 2.8, 0, 2 * Math.PI);
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.fill();
+  }
+
+  // Pointer
+  ctx.beginPath();
+  ctx.moveTo(CX, CY - R - 18);
+  ctx.lineTo(CX - 8, CY - R - 3);
+  ctx.lineTo(CX + 8, CY - R - 3);
+  ctx.closePath();
+  ctx.fillStyle = "#e8c86a";
+  ctx.fill();
+}
+
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+function spinTick(ts) {
+  if (!spinStart) spinStart = ts;
+  const elapsed = (ts - spinStart) / 1000;
+  const t = Math.min(elapsed / spinDur, 1);
+  const e = easeOutCubic(t);
+
+  wheelAngle = spinFrom + (spinTo - spinFrom) * e;
+  ballAngle  = -(wheelAngle * 3.5) - Math.PI / 2;
+
+  drawWheel();
+
+  if (t < 1) {
+    spinRAF = requestAnimationFrame(spinTick);
+  } else {
+    spinning = false;
+    // Determine winner: slot under pointer (top = angle - PI/2 normalised)
+    const norm = ((wheelAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    const ptr  = (2 * Math.PI - norm + 1.5 * Math.PI) % (2 * Math.PI);
+    winSlotIdx = Math.floor(ptr / SEG) % TOTAL;
+    drawWheel();
+    if (spinCB) spinCB(WHEEL_SLOTS[winSlotIdx]);
+  }
+}
+
+function doSpin(targetName, cb) {
+  if (spinning) return;
+  spinning   = true;
+  spinCB     = cb;
+  spinStart  = null;
+  winSlotIdx = -1;
+
+  // Find target slot index (first match)
+  let targetIdx = WHEEL_SLOTS.findIndex(s => s.name === targetName);
+  if (targetIdx < 0) targetIdx = Math.floor(Math.random() * TOTAL);
+
+  const slotMid    = targetIdx * SEG + SEG / 2;
+  const currentNorm = ((wheelAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  const fullSpins   = (6 + Math.floor(Math.random() * 4)) * 2 * Math.PI;
+  const needed      = ((2 * Math.PI - slotMid - currentNorm + 2 * Math.PI) % (2 * Math.PI));
+
+  spinFrom = wheelAngle;
+  spinTo   = wheelAngle + fullSpins + needed;
+  spinDur  = 4.5 + Math.random() * 1.5;
+
+  spinRAF = requestAnimationFrame(spinTick);
+}
+
+// ─── UI Helpers ───────────────────────────────────────────────────────────────
+function currentLadderEntry() {
+  // Find the rung that matches current wins (or 0 wins baseline)
+  return LADDER.find(r => r.wins === state.wins) || LADDER[0];
+}
+
+function renderLadder() {
+  const el = document.getElementById("ladder");
+  el.innerHTML = "";
+  // Reverse so highest is on top
+  [...LADDER].reverse().forEach(rung => {
+    const div = document.createElement("div");
+    div.className = "rung";
+    const isCurrentOrAbove = state.wins >= rung.wins;
+    const isCurrent = state.wins === rung.wins;
+    if (isCurrent) div.classList.add("current");
+    else if (isCurrentOrAbove) div.classList.add("achieved");
+    else div.classList.add("locked");
+
+    div.innerHTML = `
+      <div class="rung-wins">${rung.wins === 0 ? "0" : rung.wins + (rung.wins === 6 ? "★" : "")}</div>
+      <div class="rung-prize">
+        <div class="rung-prize-name">${rung.emoji} ${rung.prize}</div>
+        <div class="rung-prize-val">Value $${rung.value} · Cost $${rung.cost}</div>
+      </div>
+      ${isCurrent ? '<div class="rung-badge">HERE</div>' : (isCurrentOrAbove ? '<div class="rung-badge">✓</div>' : '')}
+    `;
+    el.appendChild(div);
+  });
+}
+
+function renderTypePicker() {
+  const tg = document.getElementById("type-grid");
+  const hg = document.getElementById("house-grid");
+  tg.innerHTML = "";
+  hg.innerHTML = "";
+
+  TYPES.forEach(t => {
+    const btn = document.createElement("button");
+    btn.className = "type-btn";
+    btn.dataset.name = t.name;
+    const isSel = state.selected.includes(t.name);
+    if (isSel) btn.classList.add("selected");
+    btn.innerHTML = `<span class="emoji">${t.emoji}</span><span>${t.name}</span>`;
+    btn.addEventListener("click", () => togglePick(t.name, false));
+    tg.appendChild(btn);
+  });
+
+  HOUSE.forEach(h => {
+    const btn = document.createElement("button");
+    btn.className = "type-btn";
+    btn.dataset.name = h.name;
+    const isSel = state.selected.includes(h.name);
+    if (isSel) btn.classList.add("selected-house");
+    btn.innerHTML = `<span class="emoji">${h.emoji}</span><span>${h.name}</span>`;
+    btn.addEventListener("click", () => togglePick(h.name, true));
+    hg.appendChild(btn);
+  });
+}
+
+function togglePick(name, isHouse) {
+  if (state.phase !== "pick") return;
+  const idx = state.selected.indexOf(name);
+  if (idx >= 0) {
+    state.selected.splice(idx, 1);
+  } else {
+    const houseSelected = state.selected.filter(n => HOUSE.find(h => h.name === n)).length;
+    const typeSelected  = state.selected.filter(n => !HOUSE.find(h => h.name === n)).length;
+
+    // Rules: 9 types, or 8 types + 1 house, or 7 types + 2 house
+    if (state.selected.length >= 9) {
+      // Already at max — replace last of same category
+      if (isHouse && houseSelected > 0) {
+        const lastHouse = [...state.selected].reverse().find(n => HOUSE.find(h => h.name === n));
+        state.selected.splice(state.selected.indexOf(lastHouse), 1);
+      } else if (!isHouse && typeSelected > 0) {
+        const lastType = [...state.selected].reverse().find(n => !HOUSE.find(h => h.name === n));
+        state.selected.splice(state.selected.indexOf(lastType), 1);
+      } else return;
+    }
+    // House limit: max 2 house slots
+    if (isHouse && houseSelected >= 2) return;
+    // Type limit: max 9 types (capped by total); guard against going below 7 types when adding house
+    if (!isHouse && typeSelected >= 9) {
+      const lastType = [...state.selected].reverse().find(n => !HOUSE.find(h => h.name === n));
+      state.selected.splice(state.selected.indexOf(lastType), 1);
+    }
+    state.selected.push(name);
+  }
+  updatePickUI();
+}
+
+function updatePickUI() {
+  const n = state.selected.length;
+  const houseN = state.selected.filter(name => HOUSE.find(h => h.name === name)).length;
+  const typeN  = n - houseN;
+  const valid  = n === 9 && typeN >= 7;
+
+  // Update counter
+  const counter = document.getElementById("pick-counter");
+  counter.textContent = `${n} / 9 selected`;
+  counter.className   = "pick-counter " + (valid ? "valid" : "invalid");
+
+  // Coverage %: each type slot has 2/38 = 5.26%, each house has 1/38
+  const cov = state.selected.reduce((s, name) => {
+    return s + (HOUSE.find(h => h.name === name) ? 1 : 2);
+  }, 0) / TOTAL * 100;
+  document.getElementById("coverage-pct").textContent = cov.toFixed(1);
+
+  // Refresh button states
+  document.querySelectorAll(".type-btn").forEach(btn => {
+    const name = btn.dataset.name;
+    const isSel = state.selected.includes(name);
+    const isHouseBtn = !!HOUSE.find(h => h.name === name);
+    btn.classList.toggle("selected",       isSel && !isHouseBtn);
+    btn.classList.toggle("selected-house", isSel && isHouseBtn);
+  });
+
+  // Tags
+  const disp = document.getElementById("picks-display");
+  disp.innerHTML = "";
+  state.selected.forEach(name => {
+    const isH = !!HOUSE.find(h => h.name === name);
+    const src  = isH ? HOUSE.find(h => h.name === name) : TYPES.find(t => t.name === name);
+    const tag  = document.createElement("span");
+    tag.className = "pick-tag" + (isH ? " house-tag" : "");
+    tag.textContent = src.emoji + " " + name;
+    disp.appendChild(tag);
+  });
+
+  // Spin button
+  document.getElementById("spin-btn").disabled = !valid;
+}
+
+function renderHistory() {
+  const wins = state.wins;
+  document.getElementById("streak-num").textContent = wins;
+
+  const strip = document.getElementById("history-strip");
+  strip.innerHTML = "";
+  state.history.forEach(h => {
+    const d = document.createElement("div");
+    d.className = "hist-dot " + (h.win ? "w" : "l");
+    d.textContent = h.emoji;
+    strip.appendChild(d);
+  });
+
+  document.getElementById("history-panel").style.display = state.history.length ? "" : "none";
+}
+
+function showResult(win, slot) {
+  const rung = currentLadderEntry();
+
+  document.getElementById("phase-pick").style.display  = "none";
+  document.getElementById("phase-result").style.display = "";
+  document.getElementById("phase-result").classList.add("show");
+
+  document.getElementById("res-emoji").textContent = win ? (slot.emoji || "✅") : "❌";
+  document.getElementById("res-title").textContent = win ? "WIN!" : "MISS!";
+  document.getElementById("res-title").className   = "result-title " + (win ? "win" : "loss");
+
+  const actions = document.getElementById("res-actions");
+  actions.innerHTML = "";
+
+  if (win) {
+    document.getElementById("res-desc").textContent = `The wheel landed on ${slot.emoji} ${slot.name}! You're on ${state.wins} consecutive win${state.wins !== 1 ? "s" : ""}.`;
+    document.getElementById("res-cashout-box").style.display = "";
+    document.getElementById("res-prize-name").textContent = rung.emoji + " " + rung.prize;
+    document.getElementById("res-prize-val").textContent  = `Value $${rung.value} · Cost $${rung.cost}`;
+
+    // Cashout button
+    const btnC = document.createElement("button");
+    btnC.className = "btn-cashout";
+    btnC.textContent = "💰 CASHOUT";
+    btnC.addEventListener("click", doCashout);
+    actions.appendChild(btnC);
+
+    // Continue button (only if there's a higher rung)
+    const nextRung = LADDER.find(r => r.wins > state.wins);
+    if (nextRung) {
+      const btnK = document.createElement("button");
+      btnK.className = "btn-continue";
+      btnK.textContent = "▲ KEEP SPINNING";
+      btnK.addEventListener("click", doKeepSpinning);
+      actions.appendChild(btnK);
+    } else {
+      // At max — must cashout
+      const btnC2 = document.createElement("button");
+      btnC2.className = "btn-continue";
+      btnC2.textContent = "🏆 MAX PRIZE!";
+      btnC2.addEventListener("click", doCashout);
+      actions.appendChild(btnC2);
+    }
+  } else {
+    document.getElementById("res-desc").innerHTML = `The wheel landed on ${slot.emoji} <strong>${slot.name}</strong> — not in your picks.<br>Your run resets to 0 wins.`;
+    document.getElementById("res-cashout-box").style.display = "";
+    document.getElementById("res-prize-name").textContent = LADDER[0].emoji + " " + LADDER[0].prize;
+    document.getElementById("res-prize-val").textContent  = "Consolation prize · Value $" + LADDER[0].value;
+
+    const btnN = document.createElement("button");
+    btnN.className = "btn-newgame";
+    btnN.textContent = "↩ NEW ROUND";
+    btnN.addEventListener("click", resetRound);
+    actions.appendChild(btnN);
+  }
+}
+
+function doCashout() {
+  const rung = currentLadderEntry();
+  document.getElementById("phase-result").style.display = "none";
+
+  // Full cashout summary screen inside result panel
+  document.getElementById("phase-result").style.display = "";
+  document.getElementById("res-emoji").textContent = "🎉";
+  document.getElementById("res-title").textContent = "CASHED OUT";
+  document.getElementById("res-title").className   = "result-title win";
+  document.getElementById("res-desc").textContent  = `You walked away with ${state.wins} consecutive win${state.wins !== 1 ? "s" : ""}. Nice run!`;
+  document.getElementById("res-cashout-box").style.display = "";
+  document.getElementById("res-prize-name").textContent = rung.emoji + " " + rung.prize;
+  document.getElementById("res-prize-val").textContent  = `Value $${rung.value} · Cost $${rung.cost}`;
+
+  const actions = document.getElementById("res-actions");
+  actions.innerHTML = "";
+  const btn = document.createElement("button");
+  btn.className = "btn-newgame";
+  btn.textContent = "↩ NEW GAME";
+  btn.addEventListener("click", resetRound);
+  actions.appendChild(btn);
+
+  state.phase = "cashout";
+}
+
+function doKeepSpinning() {
+  document.getElementById("phase-result").style.display = "none";
+  document.getElementById("phase-result").classList.remove("show");
+  document.getElementById("phase-pick").style.display = "";
+  document.getElementById("wheel-result").className = "wheel-result";
+  document.getElementById("wheel-result").textContent = "\u00a0";
+  state.selected = [];
+  state.phase = "pick";
+  updatePickUI();
+  renderLadder();
+}
+
+function resetRound() {
+  state.wins     = 0;
+  state.history  = [];
+  state.selected = [];
+  state.lastSlot = null;
+  state.lastWin  = false;
+  state.phase    = "pick";
+  winSlotIdx     = -1;
+
+  document.getElementById("phase-result").style.display = "none";
+  document.getElementById("phase-result").classList.remove("show");
+  document.getElementById("phase-pick").style.display = "";
+  document.getElementById("wheel-result").className = "wheel-result";
+  document.getElementById("wheel-result").textContent = "\u00a0";
+
+  renderLadder();
+  renderTypePicker();
+  renderHistory();
+  updatePickUI();
+  drawWheel();
+}
+
+// ─── Spin logic ───────────────────────────────────────────────────────────────
+document.getElementById("spin-btn").addEventListener("click", () => {
+  if (state.selected.length < 9 || state.phase !== "pick") return;
+
+  state.phase = "spinning";
+  document.getElementById("spin-btn").disabled = true;
+  document.getElementById("wheel-result").className = "wheel-result spin";
+  document.getElementById("wheel-result").textContent = "Spinning…";
+
+  // Decide outcome: probability = slots player covers / 38
+  const playerSlots = state.selected.reduce((s, name) => {
+    return s + (HOUSE.find(h => h.name === name) ? 1 : 2);
+  }, 0);
+  const hitProb = playerSlots / TOTAL;
+  const playerWins = Math.random() < hitProb;
+
+  // Pick a result slot: if win, pick one of player's slots; if loss, pick from others
+  let resultSlotName;
+  if (playerWins) {
+    // Weighted by slots: house = 1, type = 2
+    const pool = [];
+    state.selected.forEach(name => {
+      const isH = HOUSE.find(h => h.name === name);
+      const times = isH ? 1 : 2;
+      for (let i = 0; i < times; i++) pool.push(name);
+    });
+    resultSlotName = pool[Math.floor(Math.random() * pool.length)];
+  } else {
+    const losePool = WHEEL_SLOTS.filter(s => !state.selected.includes(s.name));
+    const pick = losePool[Math.floor(Math.random() * losePool.length)];
+    resultSlotName = pick.name;
+  }
+
+  doSpin(resultSlotName, (landedSlot) => {
+    const win = state.selected.includes(landedSlot.name);
+    state.lastSlot = landedSlot;
+    state.lastWin  = win;
+
+    if (win) {
+      state.wins++;
+    } else {
+      state.wins = 0;
+    }
+
+    state.history.unshift({ win, emoji: landedSlot.emoji, name: landedSlot.name });
+    if (state.history.length > 12) state.history.pop();
+
+    // Flash the matching type button
+    document.querySelectorAll(".type-btn").forEach(btn => {
+      if (btn.dataset.name === landedSlot.name) {
+        btn.classList.add(win ? "win-flash" : "lose-flash");
+        setTimeout(() => btn.classList.remove("win-flash", "lose-flash"), 600);
+      }
+    });
+
+    // Wheel result banner
+    const wr = document.getElementById("wheel-result");
+    wr.className = "wheel-result " + (win ? "win" : "loss");
+    wr.textContent = win
+      ? `✓ ${landedSlot.emoji} ${landedSlot.name} — WIN`
+      : `✗ ${landedSlot.emoji} ${landedSlot.name} — MISS`;
+
+    renderHistory();
+    renderLadder();
+
+    // Short pause then show result modal
+    setTimeout(() => {
+      state.phase = "result";
+      showResult(win, landedSlot);
+    }, 900);
+  });
+});
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+renderLadder();
+renderTypePicker();
+updatePickUI();
+drawWheel();
+setInterval(drawWheel, 100); // keep wheel repainting (handles idle state)
+</script>
+</body>
+</html>
