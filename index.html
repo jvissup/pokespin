@@ -852,7 +852,10 @@ document.getElementById("spin-btn").addEventListener("click", () => {
     }
 
     // Stop only on loss or when reaching 6 wins
-    if (resultTimeout) clearTimeout(resultTimeout);
+    if (resultTimeout) {
+      clearTimeout(resultTimeout);
+      resultTimeout = null;
+    }
     resultTimeout = setTimeout(() => {
       state.phase = "result";
       showResult(win, landedSlot);
